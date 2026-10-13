@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Shop Billing</title>
+<style>
+:root{--bg:#eef2f7;--card:#fff;--ink:#14213d;--muted:#64748b;--line:#dbe3ee;--accent:#1d4ed8;--accent-ink:#fff;--ok:#15803d;--warn:#b45309;--bad:#b91c1c}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1626;--card:#16213a;--ink:#e6edf8;--muted:#93a3bd;--line:#26345a;--accent:#6ea0ff;--accent-ink:#0e1626;--ok:#4ade80;--warn:#fbbf24;--bad:#f87171}}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;background:var(--card);border-bottom:1px solid var(--line);flex-wrap:wrap;gap:10px}
+h1{font-size:20px;margin:0}
+.tabs button{background:none;border:0;padding:8px 14px;font:inherit;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent}
+.tabs button.on{color:var(--accent);border-color:var(--accent);font-weight:600}
+main{display:grid;grid-template-columns:1fr 360px;gap:16px;padding:16px;max-width:1200px;margin:auto}
+@media(max-width:860px){main{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+.bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+input,select,button{font:inherit;color:inherit}
+input,select{padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);min-width:0}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.bar input{flex:1;min-width:140px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.item{text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;cursor:pointer}
+.item:hover:not(:disabled){border-color:var(--accent)}
+.item:disabled{opacity:.5;cursor:not-allowed}
+.item b{display:block;margin-bottom:4px}
+.price{font-weight:700}
+.stock{font-size:12px;color:var(--muted)}
+.stock.low{color:var(--warn)}.stock.out{color:var(--bad)}
+.btn{background:var(--accent);color:var(--accent-ink);border:0;padding:10px 14px;border-radius:6px;cursor:pointer;font-weight:600}
+.btn.alt{background:none;color:var(--accent);border:1px solid var(--accent)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:7px 4px;border-bottom:1px solid var(--line)}
+td.r,th.r{text-align:right}
+.qty{display:inline-flex;align-items:center;gap:4px}
+.qty button{width:24px;height:24px;border:1px solid var(--line);background:var(--bg);border-radius:4px;cursor:pointer}
+.sum div{display:flex;justify-content:space-between;padding:3px 0}
+.sum .total{font-size:20px;font-weight:700;border-top:1px dashed var(--line);margin-top:6px;padding-top:8px}
+.row{display:flex;gap:8px;margin:8px 0}.row>*{flex:1}
+.empty{color:var(--muted);padding:18px 0;text-align:center}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:12px}
+.stats div{background:var(--bg);border-radius:8px;padding:10px}
+.stats b{display:block;font-size:20px}
+.hide{display:none!important}
+dialog{border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);max-width:380px;width:92%;padding:18px}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+.receipt{font-family:"Courier New",monospace;font-size:13px}
+.receipt h2{text-align:center;margin:0 0 4px}
+.receipt .c{text-align:center;color:var(--muted)}
+.alert{background:color-mix(in srgb,var(--warn) 15%,transparent);border:1px solid var(--warn);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:13px}
+.sm{width:72px}.pos{color:var(--ok)}.neg{color:var(--bad)}
+.adjust{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.adjust button{padding:6px 8px;font-size:13px}
+@media print{body *{visibility:hidden}dialog,dialog *{visibility:visible}dialog{position:absolute;inset:0;border:0}.no-print{display:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Smart Shop Billing</h1>
+  <nav class="tabs">
+    <button class="on" data-tab="pos">Billing</button>
+    <button data-tab="inv">Inventory</button>
+    <button data-tab="sales">Sales</button>
+  </nav>
+</header>
+
+<main id="pos">
+  <section class="panel">
+    <div id="alert" class="alert hide"></div>
+    <div class="bar">
+      <input id="search" type="search" placeholder="Search products">
+      <select id="cat"></select>
+    </div>
+    <div class="grid" id="products"></div>
+  </section>
+  <aside class="panel">
+    <h3 style="margin-top:0">Current bill</h3>
+    <div id="cart"></div>
+    <div class="row">
+      <input id="cust" placeholder="Customer name (optional)">
+      <input id="disc" type="number" min="0" max="100" placeholder="Discount %">
+    </div>
+    <div class="row">
+      <select id="pay"><option>Cash</option><option>UPI</option><option>Card</option></select>
+      <button class="btn alt" id="clear">Clear bill</button>
+    </div>
+    <div class="sum" id="sum"></div>
+    <button class="btn" id="checkout" style="width:100%;margin-top:10px">Generate bill</button>
+  </aside>
+</main>
+
+<main id="inv" class="hide" style="grid-template-columns:1fr">
+  <section class="panel">
+    <div class="stats" id="invStats"></div>
+    <h3 style="margin-top:0">Add new product</h3>
+    <form id="addForm" class="bar">
+      <input id="pn" placeholder="Product name" required>
+      <input id="pc" placeholder="Category" required list="cats">
+      <datalist id="cats"></datalist>
+      <input id="pp" type="number" min="1" step="0.01" placeholder="Price (₹)" required>
+      <input id="ps" type="number" min="0" placeholder="Opening stock" required>
+      <input id="pr" type="number" min="0" placeholder="Reorder level" value="5" required>
+      <button class="btn">Save product</button>
+    </form>
+    <div class="bar">
+      <select id="invFilter"><option value="">All items</option><option value="low">Low stock</option><option value="out">Out of stock</option></select>
+      <input id="invSearch" type="search" placeholder="Search inventory">
+    </div>
+    <div style="overflow-x:auto"><table>
+      <thead><tr><th>Product</th><th class="r">Price</th><th class="r">Stock</th><th class="r">Reorder at</th><th>Adjust stock</th><th></th></tr></thead>
+      <tbody id="invBody"></tbody>
+    </table></div>
+  </section>
+  <section class="panel">
+    <h3 style="margin-top:0">Stock movements</h3>
+    <div style="overflow-x:auto"><table>
+      <thead><tr><th>Date</th><th>Product</th><th>Reason</th><th class="r">Change</th><th class="r">Stock after</th></tr></thead>
+      <tbody id="logBody"></tbody>
+    </table></div>
+  </section>
+</main>
+
+<main id="sales" class="hide" style="grid-template-columns:1fr">
+  <section class="panel">
+    <div class="stats" id="stats"></div>
+    <table><thead><tr><th>Bill</th><th>Customer</th><th>Payment</th><th class="r">Total</th></tr></thead><tbody id="salesBody"></tbody></table>
+  </section>
+</main>
+
+<dialog id="dlg"><div id="rcpt" class="receipt"></div>
+  <div class="row no-print"><button class="btn" onclick="window.print()">Print</button><button class="btn alt" onclick="dlg.close()">Close</button></div>
+</dialog>
+
+<script>
+const GST = 0.18, fmt = n => "₹" + n.toFixed(2);
+const $ = id => document.getElementById(id);
+const seed = [
+  {id:1,name:"Basmati rice 1kg",cat:"Grocery",price:120,stock:40},
+  {id:2,name:"Toor dal 1kg",cat:"Grocery",price:155,stock:25},
+  {id:3,name:"Amul milk 500ml",cat:"Dairy",price:30,stock:60},
+  {id:4,name:"Butter 100g",cat:"Dairy",price:58,stock:8},
+  {id:5,name:"Parle-G biscuits",cat:"Snacks",price:10,stock:100},
+  {id:6,name:"Lays chips",cat:"Snacks",price:20,stock:3},
+  {id:7,name:"Dettol soap",cat:"Personal care",price:45,stock:30},
+  {id:8,name:"Toothpaste 100g",cat:"Personal care",price:65,stock:0}
+];
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+let products = store.get("ssb_products", seed);
+let sales = store.get("ssb_sales", []);
+let log = store.get("ssb_log", []);
+const isLow = p => p.stock <= (p.reorder ?? 5);
+function move(p, change, reason){
+  p.stock += change;
+  log.unshift({date: new Date().toLocaleString(), name: p.name, change, reason, stock: p.stock});
+  log = log.slice(0, 100);
+}
+let cart = []; // {id, qty}
+
+const save = () => { store.set("ssb_products", products); store.set("ssb_sales", sales); store.set("ssb_log", log); };
+const find = id => products.find(p => p.id === id);
+
+// Tabs
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x === b));
+  ["pos","inv","sales"].forEach(t => $(t).classList.toggle("hide", t !== b.dataset.tab));
+  renderAll();
+});
+
+// Billing: product grid
+function renderCats(){
+  const cats = [...new Set(products.map(p => p.cat))];
+  const cur = $("cat").value;
+  $("cat").innerHTML = `<option value="">All categories</option>` + cats.map(c => `<option>${c}</option>`).join("");
+  $("cat").value = cats.includes(cur) ? cur : "";
+  $("cats").innerHTML = cats.map(c => `<option value="${c}">`).join("");
+}
+function renderProducts(){
+  const q = $("search").value.toLowerCase(), c = $("cat").value;
+  const list = products.filter(p => p.name.toLowerCase().includes(q) && (!c || p.cat === c));
+  $("products").innerHTML = list.length ? list.map(p => {
+    const inCart = (cart.find(i => i.id === p.id) || {qty:0}).qty;
+    const left = p.stock - inCart;
+    const cls = left <= 0 ? "out" : left <= (p.reorder ?? 5) ? "low" : "";
+    return `<button class="item" data-id="${p.id}" ${left <= 0 ? "disabled" : ""}>
+      <b>${p.name}</b><span class="price">${fmt(p.price)}</span>
+      <div class="stock ${cls}">${left <= 0 ? "Out of stock" : left + " left"}</div></button>`;
+  }).join("") : `<div class="empty">No products match.</div>`;
+}
+$("products").onclick = e => {
+  const b = e.target.closest(".item"); if(!b) return;
+  const id = +b.dataset.id, p = find(id), line = cart.find(i => i.id === id);
+  if(line){ if(line.qty < p.stock) line.qty++; } else cart.push({id, qty:1});
+  renderPos();
+};
+["search","cat"].forEach(id => $(id).oninput = renderProducts);
+
+// Billing: cart
+function totals(){
+  const sub = cart.reduce((s,i) => s + find(i.id).price * i.qty, 0);
+  const d = Math.min(Math.max(+$("disc").value || 0, 0), 100);
+  const discAmt = sub * d / 100, taxable = sub - discAmt, tax = taxable * GST;
+  return {sub, discAmt, tax, total: taxable + tax, d};
+}
+function renderCart(){
+  if(!cart.length){ $("cart").innerHTML = `<div class="empty">Tap a product to add it to the bill.</div>`; }
+  else $("cart").innerHTML = `<table><tbody>${cart.map(i => {
+    const p = find(i.id);
+    return `<tr><td>${p.name}</td>
+      <td><span class="qty"><button data-a="dec" data-id="${i.id}" aria-label="Decrease">−</button>${i.qty}<button data-a="inc" data-id="${i.id}" aria-label="Increase">+</button></span></td>
+      <td class="r">${fmt(p.price * i.qty)}</td></tr>`;
+  }).join("")}</tbody></table>`;
+  const t = totals();
+  $("sum").innerHTML = `<div><span>Subtotal</span><span>${fmt(t.sub)}</span></div>
+    <div><span>Discount (${t.d}%)</span><span>−${fmt(t.discAmt)}</span></div>
+    <div><span>GST (18%)</span><span>${fmt(t.tax)}</span></div>
+    <div class="total"><span>Total</span><span>${fmt(t.total)}</span></div>`;
+  $("checkout").disabled = !cart.length;
+}
+$("cart").onclick = e => {
+  const b = e.target.closest("button[data-a]"); if(!b) return;
+  const id = +b.dataset.id, line = cart.find(i => i.id === id);
+  if(b.dataset.a === "inc" && line.qty < find(id).stock) line.qty++;
+  if(b.dataset.a === "dec"){ line.qty--; if(line.qty <= 0) cart = cart.filter(i => i.id !== id); }
+  renderPos();
+};
+$("disc").oninput = renderCart;
+$("clear").onclick = () => { cart = []; renderPos(); };
+function renderAlert(){
+  const l = products.filter(isLow);
+  $("alert").classList.toggle("hide", !l.length);
+  $("alert").innerHTML = l.length ? `<b>${l.length} item${l.length > 1 ? "s" : ""} to restock:</b> ` + l.map(p => `${p.name} (${p.stock})`).join(", ") : "";
+}
+function renderPos(){ renderAlert(); renderProducts(); renderCart(); }
+
+// Checkout and receipt
+$("checkout").onclick = () => {
+  const t = totals();
+  const bill = {
+    no: "B" + String(sales.length + 1).padStart(4, "0"),
+    date: new Date().toLocaleString(),
+    cust: $("cust").value.trim() || "Walk-in",
+    pay: $("pay").value,
+    lines: cart.map(i => ({name: find(i.id).name, qty: i.qty, price: find(i.id).price})),
+    ...t
+  };
+  cart.forEach(i => move(find(i.id), -i.qty, "Sale " + bill.no));
+  sales.unshift(bill); save();
+  $("rcpt").innerHTML = `<h2>Smart Shop</h2><div class="c">${bill.no} · ${bill.date}</div>
+    <div class="c">Customer: ${bill.cust} · ${bill.pay}</div><hr>
+    <table>${bill.lines.map(l => `<tr><td>${l.name} × ${l.qty}</td><td class="r">${fmt(l.price * l.qty)}</td></tr>`).join("")}</table><hr>
+    <table><tr><td>Subtotal</td><td class="r">${fmt(bill.sub)}</td></tr>
+    <tr><td>Discount</td><td class="r">−${fmt(bill.discAmt)}</td></tr>
+    <tr><td>GST 18%</td><td class="r">${fmt(bill.tax)}</td></tr>
+    <tr><td><b>Total</b></td><td class="r"><b>${fmt(bill.total)}</b></td></tr></table>
+    <p class="c">Thank you for shopping with us.</p>`;
+  $("dlg").showModal();
+  cart = []; $("cust").value = ""; $("disc").value = "";
+  renderAll();
+};
+
+// Inventory
+function renderInv(){
+  const q = $("invSearch").value.toLowerCase(), f = $("invFilter").value;
+  const list = products.filter(p => p.name.toLowerCase().includes(q) &&
+    (!f || (f === "out" ? p.stock === 0 : isLow(p))));
+  const value = products.reduce((s,p) => s + p.price * p.stock, 0);
+  $("invStats").innerHTML = `<div><b>${products.length}</b>Products</div>
+    <div><b>${fmt(value)}</b>Stock value</div>
+    <div><b>${products.filter(p => isLow(p) && p.stock > 0).length}</b>Low stock</div>
+    <div><b>${products.filter(p => p.stock === 0).length}</b>Out of stock</div>`;
+  $("invBody").innerHTML = list.length ? list.map(p => `<tr data-id="${p.id}">
+    <td><b>${p.name}</b><br><small>${p.cat}</small></td>
+    <td class="r">${fmt(p.price)}</td>
+    <td class="r" style="color:${p.stock === 0 ? "var(--bad)" : isLow(p) ? "var(--warn)" : "inherit"};font-weight:600">${p.stock}</td>
+    <td class="r"><input class="sm" type="number" min="0" data-reorder="1" value="${p.reorder ?? 5}" aria-label="Reorder level"></td>
+    <td><div class="adjust"><input class="sm adj" type="number" min="1" placeholder="Qty" aria-label="Quantity">
+      <select class="why"><option>Restock</option><option>Return</option><option>Damaged</option><option>Expired</option><option>Correction</option></select>
+      <button class="btn" data-act="add">Add</button><button class="btn alt" data-act="rem">Remove</button></div></td>
+    <td class="r"><button class="btn alt" data-del="1">Delete</button></td></tr>`).join("")
+    : `<tr><td colspan="6" class="empty">No items found.</td></tr>`;
+  $("logBody").innerHTML = log.length ? log.slice(0, 30).map(m => `<tr><td>${m.date}</td><td>${m.name}</td><td>${m.reason}</td>
+    <td class="r ${m.change > 0 ? "pos" : "neg"}">${m.change > 0 ? "+" : ""}${m.change}</td><td class="r">${m.stock}</td></tr>`).join("")
+    : `<tr><td colspan="5" class="empty">No stock movements yet.</td></tr>`;
+}
+["invSearch","invFilter"].forEach(id => $(id).oninput = renderInv);
+$("invBody").onclick = e => {
+  const b = e.target.closest("button"); if(!b) return;
+  const tr = b.closest("tr"), id = +tr.dataset.id, p = find(id);
+  if(b.dataset.del){
+    if(!confirm("Delete " + p.name + "?")) return;
+    products = products.filter(x => x.id !== id); cart = cart.filter(i => i.id !== id);
+  } else if(b.dataset.act){
+    const n = Math.floor(+tr.querySelector(".adj").value);
+    if(!(n > 0)) return alert("Enter a quantity greater than 0.");
+    if(b.dataset.act === "rem" && n > p.stock) return alert("Only " + p.stock + " in stock.");
+    move(p, b.dataset.act === "add" ? n : -n, tr.querySelector(".why").value);
+    const line = cart.find(i => i.id === id);
+    if(line && line.qty > p.stock){ line.qty = p.stock; if(!line.qty) cart = cart.filter(i => i.id !== id); }
+  } else return;
+  save(); renderAll();
+};
+$("invBody").onchange = e => {
+  if(!e.target.dataset.reorder) return;
+  find(+e.target.closest("tr").dataset.id).reorder = Math.max(0, Math.floor(+e.target.value) || 0);
+  save(); renderAll();
+};
+$("addForm").onsubmit = e => {
+  e.preventDefault();
+  const name = $("pn").value.trim(), cat = $("pc").value.trim();
+  const price = +$("pp").value, stock = Math.floor(+$("ps").value), reorder = Math.floor(+$("pr").value);
+  const existing = products.find(p => p.name.toLowerCase() === name.toLowerCase());
+  if(existing){ existing.price = price; existing.cat = cat; existing.reorder = reorder; if(stock > 0) move(existing, stock, "Restock"); }
+  else {
+    const p = {id: Date.now(), name, cat, price, stock: 0, reorder};
+    products.push(p); if(stock > 0) move(p, stock, "Opening stock");
+  }
+  save(); e.target.reset(); $("pr").value = 5; renderAll();
+};
+
+
+// Sales
+function renderSales(){
+  const rev = sales.reduce((s,b) => s + b.total, 0);
+  const low = products.filter(isLow).length;
+  $("stats").innerHTML = `<div><b>${sales.length}</b>Bills</div><div><b>${fmt(rev)}</b>Revenue</div><div><b>${low}</b>Low or out of stock</div>`;
+  $("salesBody").innerHTML = sales.length ? sales.map(b => `<tr><td>${b.no}<br><small>${b.date}</small></td>
+    <td>${b.cust}</td><td>${b.pay}</td><td class="r">${fmt(b.total)}</td></tr>`).join("")
+    : `<tr><td colspan="4" class="empty">No bills yet.</td></tr>`;
+}
+
+function renderAll(){ renderCats(); renderPos(); renderInv(); renderSales(); }
+renderAll();
+</script>
+</body>
+</html>
